@@ -1,5 +1,7 @@
-import NextAuth from "next-auth/next";
-import GoogleProvider from "next-auth/providers/google";
+import NextAuth from 'next-auth';
+import GoogleProvider from 'next-auth/providers/google';
+import { connectToDB } from '@utils/database';
+import User from '@models/user';
 
 const handler = NextAuth({
     providers: [
@@ -7,17 +9,43 @@ const handler = NextAuth({
             clientId: process.env.GOOGLE_ID,
             clientSecret: process.env.GOOGLE_CLIENT_SECRET,
         })
-    ], async session({ session }) {
+    ],
+    callbacks: {
+        async session({ session }) {
+            await connectToDB();
+            const sessionUser = await User.findOne({
+                email: session.user.email
+            });
 
-    },
-    async signIn({ profile }) {
-        try {
+            session.user.id = sessionUser._id.toString();
 
-        } catch (error) {
-            
+            return session;
+        },
+        async signIn({ profile }) {
+            try {
+                await connectToDB();
+
+                // check if a user already exists
+                const userExists = await User.findOne({
+                    email: profile.email,
+                });
+
+                // if not, create a user and save to database
+                if (!userExists) {
+                    await User.create({
+                        email: profile.email,
+                        username: profile.name.replace(" ", "").toLowerCase(),
+                        image: profile.picture
+                    });
+                }
+
+                return true;
+            } catch (error) {
+                console.log(error);
+                return false;
+            }
         }
-    },
-})
+    }
+});
 
-// not something we usually do. We either do a get or a post. Not both. For next auth this is how to do it
-export { handler as GET, handler as POST }
+export { handler as GET, handler as POST };
